@@ -5,6 +5,7 @@ import sqlparse
 
 class Query():
     def __init__(self, query):
+        self.agg = ['max', 'min', 'avg', 'sum']
         self.tableList = []
         self.tableDict = {}
         self.tables = {}
@@ -50,6 +51,7 @@ class Query():
             with open('./files/' + i + '.csv') as csvfile:
                 reader = csv.reader(csvfile)
                 for row in reader:
+                    row = [int(x) for x in row]
                     self.tables[i].append(row)
 
     def getAllAttributes(self):
@@ -58,9 +60,16 @@ class Query():
             for j in self.tableDict[i]:
                 lst.append(j)
         return lst
-    
+
+    # def checkAggregate(self):
+        # at = ['max', 'min', 'avg', 'sum']
+        
+
     def getAttributes(self, posA):
         self.attributes = []
+        self.attributesAgg = []
+        self.aggregateList = []
+        self.aggregate = False
         self.allAttributes = self.getAllAttributes()
         self.flagAttributes = []
         for i in self.identifiers[posA].split(','):
@@ -69,12 +78,40 @@ class Query():
                 break
             for j in self.tableNames:
                 for idx, k in enumerate(self.tableDict[j]):
-                    if i.strip() in k:
+                    if len(self.attributes) > 0 and i.strip() in self.attributes[-1]:
+                        continue
+                    if '(' and ')' in i.strip():
+                        self.aggregate = True
+                        agg = (i.strip()).split('(')[0]
+                        att = (i.strip()).split('(')[1]
+                        att = (att).split(')')[0]
+                        if att in k:
+                            self.attributesAgg.append(self.tableDict[j][idx])
+                            self.attributes.append(i.strip())
+                        if agg.lower() in self.agg:
+                            self.aggregateList.append(agg.lower())
+                        else:
+                            print('Invalid Aggregate Function')
+                            exit(0)
+                    elif '(' in i.strip() or ')' in i.strip():
+                        print("Invalid Attribute")
+                        exit(0)
+                    if i.strip() in k and not self.aggregate:
                         self.attributes.append(self.tableDict[j][idx])
+                    elif i.strip() in k and self.aggregate:
+                        print("Normal column cannot be given along with aggregate function.")
+                        exit(0)
+            # print(self.attributes)
+            fl = False
+            for j in self.attributes:
+                if i.strip() in j:
+                    fl = True
+            if not fl:
+                print("Invalid Attribute ", i.strip())
+                exit(0)
 
         for i, j in enumerate(self.allAttributes):
             self.flagAttributes.append(True) if j in self.attributes else self.flagAttributes.append(False)
-
 
     def getTableNames(self, posT):
         self.tableNames = []
@@ -101,7 +138,32 @@ class Query():
                 for k in table2:
                     self.finalTable.append(j + k)
 
+    def selectAggregates(self):
+        curTable = deepcopy(self.finalTable)
+        self.finalTable = []
+        final = []
+        print(self.attributesAgg)
+        print(self.aggregateList)
+        for i, att in enumerate(self.attributesAgg):
+            idx = self.allAttributes.index(att)
+            lst = [tab[idx] for tab in curTable]
+            print(lst)
+            print(self.aggregateList[i])
+            if self.aggregateList[i] == 'max':
+                final.append(max(lst))
+            elif self.aggregateList[i] == 'min':
+                final.append(min(lst))
+            elif self.aggregateList[i] == 'sum':
+                final.append(sum(lst))
+            elif self.aggregateList[i] == 'avg':
+                final.append(sum(lst)/len(lst))
+            print(final)
+        self.finalTable.append(final)
+
     def selectAttributes(self):
+        if self.aggregate:
+            self.selectAggregates()
+            return
         curTable = deepcopy(self.finalTable)
         self.finalTable = []
         for i in curTable:
@@ -112,7 +174,11 @@ class Query():
             self.finalTable.append(lst)
 
     def distinctTable(self):
-        pass
+        lst = deepcopy(self.finalTable)
+        self.finalTable = []
+        for i in lst:
+            if i not in self.finalTable:
+                self.finalTable.append(i)
 
     def processQuery(self):
         if self.qType != 'SELECT' or len(self.identifiers) < 4 or len(self.identifiers) > 6:
@@ -153,7 +219,7 @@ class Query():
         sep = ','
         print(sep.join(self.attributes))
         for i in self.finalTable:
-            print(sep.join(i))
+            print(sep.join(map(str, i)))
 
 
 if len(sys.argv) > 1:
