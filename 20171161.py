@@ -6,7 +6,7 @@ import sqlparse
 class Query():
     def __init__(self, query):
         self.agg = ['max', 'min', 'avg', 'sum']
-        self.operators = ['=', '>', '<', '>=', '<=']
+        self.operators = ['!=', '>=', '<=', '>', '<', '=']
         self.tableList = []
         self.tableDict = {}
         self.tables = {}
@@ -144,14 +144,17 @@ class Query():
         for i, att in enumerate(self.attributesAgg):
             idx = self.allAttributes.index(att)
             lst = [tab[idx] for tab in curTable]
-            if self.aggregateList[i] == 'max':
-                final.append(max(lst))
-            elif self.aggregateList[i] == 'min':
-                final.append(min(lst))
-            elif self.aggregateList[i] == 'sum':
-                final.append(sum(lst))
-            elif self.aggregateList[i] == 'avg':
-                final.append(sum(lst)/len(lst))
+            try:
+                if self.aggregateList[i] == 'max':
+                    final.append(max(lst))
+                elif self.aggregateList[i] == 'min':
+                    final.append(min(lst))
+                elif self.aggregateList[i] == 'sum':
+                    final.append(sum(lst))
+                elif self.aggregateList[i] == 'avg':
+                    final.append(sum(lst)/len(lst))
+            except:
+                return
         self.finalTable.append(final)
 
     def selectAttributes(self):
@@ -193,6 +196,8 @@ class Query():
     def applyOp(self, a1, op, a2):
         if op == '=':
             return a1 == a2
+        if op == '!=':
+            return a1 != a2
         if op == '>=':
             return a1 >= a2
         if op == '<=':
@@ -287,7 +292,6 @@ class Query():
                 self.joinOp = str(whr[i]).lower()
             else:
                 self.prError("Invalid Query Syntax !!")
-
         if self.cond == True:
             self.prError("Invalid Query Syntax !!")
 
@@ -307,21 +311,16 @@ class Query():
         self.getTableNames(posT)
         self.getTables()
         self.getAttributes(posA)
-
         # Joining all the tables
         self.joinTables()
-
         # Where Condition
         if self.where:
             self.procWhere()
-
         # Selecting given attributes
         self.selectAttributes()
-
         # Distict Clause
         if self.distinct:
             self.distinctTable()
-        
         # printing the table
         sep = ','
         print(sep.join(self.attributes))
