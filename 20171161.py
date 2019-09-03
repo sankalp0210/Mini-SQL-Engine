@@ -16,6 +16,10 @@ class Query():
         self.convertToLower()
         self.processQuery()
 
+    def prError(self, msg = "Invalid Query Syntax"):
+        print(msg)
+        exit(0)
+
     def readMetaData(self):
         f = open('./files/metadata.txt', 'r')
         fields = []
@@ -84,18 +88,14 @@ class Query():
                 if agg.lower() in self.agg:
                     self.aggregateList.append(agg.lower())
                 else:
-                    print('Invalid Aggregate Function')
-                    exit(0)
+                    self.prError('Invalid Aggregate Function')
                 if not self.aggregate and bt > 0:
-                    print('Normal column cannot be given along with aggregate function.')
-                    exit(0)
+                    self.prError('Normal column cannot be given along with aggregate function.')
                 self.aggregate = True
             elif '(' in i.strip() or ')' in i.strip():
-                print("Invalid Syntax !!")
-                exit(0)
+                self.prError("Invalid Syntax !!")
             elif self.aggregate:
-                print('Normal column cannot be given along with aggregate function.')
-                exit(0)
+                self.prError('Normal column cannot be given along with aggregate function.')
             for j in self.tableNames:
                 if flagField[-1]:
                     continue
@@ -110,8 +110,7 @@ class Query():
                     else:
                         self.attributes.append(newAtt)
             if not flagField[-1]:
-                print("Invalid Attribute ", i.strip())
-                exit(0)
+                self.prError("Invalid Attribute " + str(i.strip()))
 
         for i, j in enumerate(self.allAttributes):
             self.flagAttributes.append(True) if j in self.attributes else self.flagAttributes.append(False)
@@ -120,16 +119,13 @@ class Query():
         self.tableNames = []
         for i in self.identifiers[posT].split(','):
             if i.strip() in self.tableNames:
-                print("Table name cannot be repeated after FROM Clause !!")
-                exit(0)
+                self.prError("Table name cannot be repeated after FROM Clause !!")
             if i.strip() in self.tableList:
                 self.tableNames.append(i.strip())
             else:
-                print("INVALID TABLE NAME")
-                exit(0)
+                self.prError("INVALID TABLE NAME")
         if(len(self.tableNames)) < 1:
-            print("No Table Names were given.")
-            exit(0)
+            self.prError("No Table Names were given.")
 
     def joinTables(self):
         self.finalTable = self.tables[self.tableNames[0]]
@@ -182,7 +178,17 @@ class Query():
         return [value for value in lst1 if value in lst2]
 
     def union(self, lst1, lst2):
-        return lst1 + lst2 - self.intersection(lst1, lst2)
+        lst = lst1 + lst2
+        lst3 = self.intersection(lst1, lst2)
+        fin = []
+        for value in lst:
+            fin.append(value)
+            for k in lst3:
+                if value == k:
+                    lst3.remove(k)
+                    fin.remove(value)
+                    break
+        return fin
 
     def applyOp(self, a1, op, a2):
         if op == '=':
@@ -199,17 +205,61 @@ class Query():
     def getTabCond(self, a1, op, a2):
         val1 = True
         val2 = True
-
-        return []
+        tab1 = ''
+        tab2 = ''
+        for i in self.tableNames:
+            newAtt1 = a1
+            newAtt2 = a2
+            if '.' not in newAtt1:
+                newAtt1 = i + '.' + newAtt1
+            if '.' not in newAtt2:
+                newAtt2 = i + '.' + newAtt2
+            if newAtt1 in self.tableDict[i]:
+                a1 = newAtt1
+                val1 = False
+                tab1 = i
+            if newAtt2 in self.tableDict[i]:
+                a2 = newAtt2
+                val2 = False
+                tab2 = i
+        lst = []
+        for i in self.finalTable:
+            x1 = 0
+            x2 = 0
+            if val1:
+                try:
+                    x1 = int(a1)
+                except:
+                    self.prError('Invalid attribute ' + str(a1))
+            else:
+                idx = self.allAttributes.index(a1)
+                x1 = i[idx]
+            if val2:
+                try:
+                    x2 = int(a2)
+                except:
+                    self.prError('Invalid attribute ' + str(a2))
+            else:
+                idx = self.allAttributes.index(a2)
+                x2 = i[idx]
+            if self.applyOp(x1, op, x2):
+                lst.append(i)
+        if (tab1 != tab2) and (op == '=') and tab1 != '' and tab2 != '':
+            idx = self.allAttributes.index(a2)
+            self.flagAttributes[idx] = False
+            try:
+                self.attributes.remove(a2)
+            except:
+                pass
+        return lst
 
     def procWhere(self):
         idx = self.tokenNames.index('Where')
         whr = self.query[idx].tokens
         if len(whr) < 3:
-            print("Invalid Query Syntax !!")
-            exit(0)
+            self.prError("Invalid Query Syntax !!")
         self.cond = True
-        self.joinOp = 'or'
+        self.joinOp = 'and'
         for i in range(2, len(whr), 2):
             if type(whr[i]).__name__ == 'Comparison':
                 self.cond = False
@@ -220,36 +270,30 @@ class Query():
                         flag = False
                         lst = str(whr[i]).split(op)
                         if len(lst) != 2:
-                            print("Invalid Syntax !!")
-                            exit(0)
+                            self.prError("Invalid Syntax !!")
                         comp.append(lst[0].strip())
                         comp.append(op)
                         comp.append(lst[1].strip())
                 if flag:
-                    print("Operator not found!!")
-                    exit(0)
-                # print(comp)
+                    self.prError("Operator not found!!")
                 table2 = self.getTabCond(comp[0], comp[1], comp[2])
                 table1 = deepcopy(self.finalTable)
                 if self.joinOp == 'or':
                     self.finalTable = self.union(table1, table2)
                 else:
                     self.finalTable = self.intersection(table1, table2)
-            elif str(whr[i]).lower() == 'and' or whr[i].lower() == 'or':
+            elif str(whr[i]).lower() == 'and' or str(whr[i]).lower() == 'or':
                 self.cond = True
                 self.joinOp = str(whr[i]).lower()
             else:
-                print("Invalid Query Syntax !!")
-                exit(0)
+                self.prError("Invalid Query Syntax !!")
 
         if self.cond == True:
-            print("Invalid Query Syntax !!")
-            exit(0)
+            self.prError("Invalid Query Syntax !!")
 
     def processQuery(self):
         if self.qType != 'SELECT' or len(self.identifiers) < 4 or len(self.identifiers) > 6:
-            print("INVALID QUERY !!")
-            exit(0)
+            self.prError("INVALID QUERY !!")
 
         self.where = True if 'where' in self.identifiers[-1] else False
         self.distinct = True if self.identifiers[1] == 'distinct' else False
@@ -258,8 +302,7 @@ class Query():
         posA = 2 if self.distinct else 1
 
         if self.identifiers[posF] != 'from':
-            print("INVALID QUERY SYNTAX !")
-            exit(0)
+            self.prError("INVALID QUERY SYNTAX !")
 
         self.getTableNames(posT)
         self.getTables()
@@ -269,8 +312,8 @@ class Query():
         self.joinTables()
 
         # Where Condition
-        # if self.where:
-        #     self.procWhere()
+        if self.where:
+            self.procWhere()
 
         # Selecting given attributes
         self.selectAttributes()
@@ -284,7 +327,6 @@ class Query():
         print(sep.join(self.attributes))
         for i in self.finalTable:
             print(sep.join(map(str, i)))
-
 
 if len(sys.argv) > 1:
     Query(sys.argv[1:])
