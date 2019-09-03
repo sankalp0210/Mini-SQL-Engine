@@ -71,41 +71,44 @@ class Query():
         self.allAttributes = self.getAllAttributes()
         self.flagAttributes = []
         flagField = []
-        for i in self.identifiers[posA].split(','):
+        for bt, i in enumerate(self.identifiers[posA].split(',')):
             flagField.append(False)
+            att = i.strip()
             if i.strip() == '*':
                 self.attributes = deepcopy(self.allAttributes)
                 break
+            if '(' and ')' in i.strip():
+                agg = (i.strip()).split('(')[0]
+                att = (i.strip()).split('(')[1]
+                att = (att).split(')')[0]
+                if agg.lower() in self.agg:
+                    self.aggregateList.append(agg.lower())
+                else:
+                    print('Invalid Aggregate Function')
+                    exit(0)
+                if not self.aggregate and bt > 0:
+                    print('Normal column cannot be given along with aggregate function.')
+                    exit(0)
+                self.aggregate = True
+            elif '(' in i.strip() or ')' in i.strip():
+                print("Invalid Syntax !!")
+                exit(0)
+            elif self.aggregate:
+                print('Normal column cannot be given along with aggregate function.')
+                exit(0)
             for j in self.tableNames:
-                for idx, k in enumerate(self.tableDict[j]):
-                    if flagField[-1]:
-                        continue
-                    if '(' and ')' in i.strip():
-                        agg = (i.strip()).split('(')[0]
-                        att = (i.strip()).split('(')[1]
-                        att = (att).split(')')[0]
-                        if att not in k:
-                            continue
-                        if att in k:
-                            self.attributesAgg.append(self.tableDict[j][idx])
-                            self.attributes.append(i.strip())
-                        if agg.lower() in self.agg:
-                            self.aggregateList.append(agg.lower())
-                        else:
-                            print('Invalid Aggregate Function')
-                            exit(0)
-                        flagField[-1] = True
-                        self.aggregate = True
-                    elif '(' in i.strip() or ')' in i.strip():
-                        print("Invalid Attribute")
-                        exit(0)
-                    if i.strip() in k and not self.aggregate:
-                        flagField[-1] = True
-                        self.attributes.append(self.tableDict[j][idx])
-                    elif i.strip() in k and self.aggregate:
-                        print("Normal column cannot be given along with aggregate function.")
-                        exit(0)
-
+                if flagField[-1]:
+                    continue
+                newAtt = att
+                if '.' not in att:
+                    newAtt = j + '.' + att
+                if newAtt in self.tableDict[j]:
+                    flagField[-1] = True
+                    if self.aggregate:
+                        self.attributesAgg.append(newAtt)
+                        self.attributes.append(agg + '(' + newAtt + ')')
+                    else:
+                        self.attributes.append(newAtt)
             if not flagField[-1]:
                 print("Invalid Attribute ", i.strip())
                 exit(0)
@@ -163,9 +166,9 @@ class Query():
         self.finalTable = []
         for i in curTable:
             lst = []
-            for j in range(len(self.flagAttributes)):
-                if self.flagAttributes[j]:
-                    lst.append(i[j])
+            for j in self.attributes:
+                idx = self.allAttributes.index(j)
+                lst.append(i[idx])
             self.finalTable.append(lst)
 
     def distinctTable(self):
@@ -196,7 +199,7 @@ class Query():
     def getTabCond(self, a1, op, a2):
         val1 = True
         val2 = True
-        
+
         return []
 
     def procWhere(self):
@@ -266,8 +269,8 @@ class Query():
         self.joinTables()
 
         # Where Condition
-        if self.where:
-            self.procWhere()
+        # if self.where:
+        #     self.procWhere()
 
         # Selecting given attributes
         self.selectAttributes()
