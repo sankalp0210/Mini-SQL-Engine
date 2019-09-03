@@ -6,6 +6,7 @@ import sqlparse
 class Query():
     def __init__(self, query):
         self.agg = ['max', 'min', 'avg', 'sum']
+        self.operators = ['=', '>', '<', '>=', '<=']
         self.tableList = []
         self.tableDict = {}
         self.tables = {}
@@ -36,6 +37,7 @@ class Query():
     def parseQuery(self, query):
         sep = ' '
         self.query = sqlparse.parse(sep.join(query))[0].tokens
+        self.tokenNames = [type(token).__name__ for token in self.query]
         self.qType = sqlparse.sql.Statement(self.query).get_type()
         l = sqlparse.sql.IdentifierList(self.query).get_identifiers()
         self.identifiers = [str(i) for i in l]
@@ -61,10 +63,6 @@ class Query():
                 lst.append(j)
         return lst
 
-    # def checkAggregate(self):
-        # at = ['max', 'min', 'avg', 'sum']
-        
-
     def getAttributes(self, posA):
         self.attributes = []
         self.attributesAgg = []
@@ -72,19 +70,22 @@ class Query():
         self.aggregate = False
         self.allAttributes = self.getAllAttributes()
         self.flagAttributes = []
+        flagField = []
         for i in self.identifiers[posA].split(','):
+            flagField.append(False)
             if i.strip() == '*':
                 self.attributes = deepcopy(self.allAttributes)
                 break
             for j in self.tableNames:
                 for idx, k in enumerate(self.tableDict[j]):
-                    if len(self.attributes) > 0 and i.strip() in self.attributes[-1]:
+                    if flagField[-1]:
                         continue
                     if '(' and ')' in i.strip():
-                        self.aggregate = True
                         agg = (i.strip()).split('(')[0]
                         att = (i.strip()).split('(')[1]
                         att = (att).split(')')[0]
+                        if att not in k:
+                            continue
                         if att in k:
                             self.attributesAgg.append(self.tableDict[j][idx])
                             self.attributes.append(i.strip())
@@ -93,20 +94,19 @@ class Query():
                         else:
                             print('Invalid Aggregate Function')
                             exit(0)
+                        flagField[-1] = True
+                        self.aggregate = True
                     elif '(' in i.strip() or ')' in i.strip():
                         print("Invalid Attribute")
                         exit(0)
                     if i.strip() in k and not self.aggregate:
+                        flagField[-1] = True
                         self.attributes.append(self.tableDict[j][idx])
                     elif i.strip() in k and self.aggregate:
                         print("Normal column cannot be given along with aggregate function.")
                         exit(0)
-            # print(self.attributes)
-            fl = False
-            for j in self.attributes:
-                if i.strip() in j:
-                    fl = True
-            if not fl:
+
+            if not flagField[-1]:
                 print("Invalid Attribute ", i.strip())
                 exit(0)
 
@@ -118,15 +118,15 @@ class Query():
         for i in self.identifiers[posT].split(','):
             if i.strip() in self.tableNames:
                 print("Table name cannot be repeated after FROM Clause !!")
-                return
+                exit(0)
             if i.strip() in self.tableList:
                 self.tableNames.append(i.strip())
             else:
                 print("INVALID TABLE NAME")
-                return
+                exit(0)
         if(len(self.tableNames)) < 1:
             print("No Table Names were given.")
-            return
+            exit(0)
 
     def joinTables(self):
         self.finalTable = self.tables[self.tableNames[0]]
@@ -142,13 +142,9 @@ class Query():
         curTable = deepcopy(self.finalTable)
         self.finalTable = []
         final = []
-        print(self.attributesAgg)
-        print(self.aggregateList)
         for i, att in enumerate(self.attributesAgg):
             idx = self.allAttributes.index(att)
             lst = [tab[idx] for tab in curTable]
-            print(lst)
-            print(self.aggregateList[i])
             if self.aggregateList[i] == 'max':
                 final.append(max(lst))
             elif self.aggregateList[i] == 'min':
@@ -157,7 +153,6 @@ class Query():
                 final.append(sum(lst))
             elif self.aggregateList[i] == 'avg':
                 final.append(sum(lst)/len(lst))
-            print(final)
         self.finalTable.append(final)
 
     def selectAttributes(self):
@@ -180,33 +175,99 @@ class Query():
             if i not in self.finalTable:
                 self.finalTable.append(i)
 
+    def intersection(self, lst1, lst2):
+        return [value for value in lst1 if value in lst2]
+
+    def union(self, lst1, lst2):
+        return lst1 + lst2 - self.intersection(lst1, lst2)
+
+    def applyOp(self, a1, op, a2):
+        if op == '=':
+            return a1 == a2
+        if op == '>=':
+            return a1 >= a2
+        if op == '<=':
+            return a1 <= a2
+        if op == '>':
+            return a1 > a2
+        if op == '<':
+            return a1 < a2
+        
+    def getTabCond(self, a1, op, a2):
+        val1 = True
+        val2 = True
+        
+        return []
+
+    def procWhere(self):
+        idx = self.tokenNames.index('Where')
+        whr = self.query[idx].tokens
+        if len(whr) < 3:
+            print("Invalid Query Syntax !!")
+            exit(0)
+        self.cond = True
+        self.joinOp = 'or'
+        for i in range(2, len(whr), 2):
+            if type(whr[i]).__name__ == 'Comparison':
+                self.cond = False
+                comp = []
+                flag = True
+                for op in self.operators:
+                    if op in str(whr[i]):
+                        flag = False
+                        lst = str(whr[i]).split(op)
+                        if len(lst) != 2:
+                            print("Invalid Syntax !!")
+                            exit(0)
+                        comp.append(lst[0].strip())
+                        comp.append(op)
+                        comp.append(lst[1].strip())
+                if flag:
+                    print("Operator not found!!")
+                    exit(0)
+                # print(comp)
+                table2 = self.getTabCond(comp[0], comp[1], comp[2])
+                table1 = deepcopy(self.finalTable)
+                if self.joinOp == 'or':
+                    self.finalTable = self.union(table1, table2)
+                else:
+                    self.finalTable = self.intersection(table1, table2)
+            elif str(whr[i]).lower() == 'and' or whr[i].lower() == 'or':
+                self.cond = True
+                self.joinOp = str(whr[i]).lower()
+            else:
+                print("Invalid Query Syntax !!")
+                exit(0)
+
+        if self.cond == True:
+            print("Invalid Query Syntax !!")
+            exit(0)
+
     def processQuery(self):
         if self.qType != 'SELECT' or len(self.identifiers) < 4 or len(self.identifiers) > 6:
             print("INVALID QUERY !!")
-            return
+            exit(0)
 
-        self.where = False
+        self.where = True if 'where' in self.identifiers[-1] else False
         self.distinct = True if self.identifiers[1] == 'distinct' else False
         posT = 4 if self.distinct else 3
         posF = 3 if self.distinct else 2
         posA = 2 if self.distinct else 1
 
-        if 'where' in self.identifiers[-1]:
-            self.where = True
         if self.identifiers[posF] != 'from':
             print("INVALID QUERY SYNTAX !")
-            return
-        
+            exit(0)
+
         self.getTableNames(posT)
         self.getTables()
         self.getAttributes(posA)
 
         # Joining all the tables
         self.joinTables()
-        
+
         # Where Condition
         if self.where:
-            pass
+            self.procWhere()
 
         # Selecting given attributes
         self.selectAttributes()
