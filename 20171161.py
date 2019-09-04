@@ -249,7 +249,7 @@ class Query():
                 x2 = i[idx]
             if self.applyOp(x1, op, x2):
                 lst.append(i)
-        if (tab1 != tab2) and (op == '=') and tab1 != '' and tab2 != '':
+        if (tab1 != tab2) and (op == '=') and tab1 != '' and tab2 != '' and len(self.attributes) == len(self.allAttributes):
             idx = self.allAttributes.index(a2)
             self.flagAttributes[idx] = False
             try:

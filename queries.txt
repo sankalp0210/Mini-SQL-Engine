@@ -32,3 +32,6 @@ python3 x.py "select A, table2.B from table1, table2 where table1.A > 900 AND ta
 
 python3 x.py "select A, table2.B from table1, table2 where table1.A > 900 AND table2.B = 311;"
 
+python3 x.py "Select table1.B,table2.B from table1,table2 where table1.B=table2.B;"
+
+python3 x.py "Select table1.B, table2.B from table1, table2 where A > 0 and table1.B = table2.B;"
