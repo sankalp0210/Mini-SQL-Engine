@@ -5,8 +5,11 @@ import sqlparse
 
 class Query():
     def __init__(self, query):
+        if len(query[0]) < 3:
+            self.prError("No query given.")
+        query[0] = ' '.join(query[0].split())
         self.agg = ['max', 'min', 'avg', 'sum']
-        self.operators = ['!=', '>=', '<=', '>', '<', '=']
+        self.operators = ['>=', '<=', '>', '<', '=']
         self.tableList = []
         self.tableDict = {}
         self.tables = {}
@@ -93,22 +96,22 @@ class Query():
                     self.prError('Normal column cannot be given along with aggregate function.')
                 self.aggregate = True
             elif '(' in i.strip() or ')' in i.strip():
-                self.prError("Invalid Syntax !!")
+                self.prError("Invalid Syntax !")
             elif self.aggregate:
                 self.prError('Normal column cannot be given along with aggregate function.')
             for j in self.tableNames:
-                if flagField[-1]:
-                    continue
                 newAtt = att
                 if '.' not in att:
                     newAtt = j + '.' + att
-                if newAtt in self.tableDict[j]:
+                if newAtt in self.tableDict[j] and not flagField[-1]:
                     flagField[-1] = True
                     if self.aggregate:
                         self.attributesAgg.append(newAtt)
                         self.attributes.append(agg + '(' + newAtt + ')')
                     else:
                         self.attributes.append(newAtt)
+                elif newAtt in self.tableDict[j]:
+                    self.prError("Ambiguous Column name : " + str(i.strip()))
             if not flagField[-1]:
                 self.prError("Invalid Attribute " + str(i.strip()))
 
@@ -119,7 +122,7 @@ class Query():
         self.tableNames = []
         for i in self.identifiers[posT].split(','):
             if i.strip() in self.tableNames:
-                self.prError("Table name cannot be repeated after FROM Clause !!")
+                self.prError("Table name cannot be repeated after FROM Clause !")
             if i.strip() in self.tableList:
                 self.tableNames.append(i.strip())
             else:
@@ -196,8 +199,6 @@ class Query():
     def applyOp(self, a1, op, a2):
         if op == '=':
             return a1 == a2
-        if op == '!=':
-            return a1 != a2
         if op == '>=':
             return a1 >= a2
         if op == '<=':
@@ -212,6 +213,8 @@ class Query():
         val2 = True
         tab1 = ''
         tab2 = ''
+        b1 = deepcopy(a1)
+        b2 = deepcopy(a2)
         for i in self.tableNames:
             newAtt1 = a1
             newAtt2 = a2
@@ -219,14 +222,20 @@ class Query():
                 newAtt1 = i + '.' + newAtt1
             if '.' not in newAtt2:
                 newAtt2 = i + '.' + newAtt2
-            if newAtt1 in self.tableDict[i]:
-                a1 = newAtt1
+            if newAtt1 in self.tableDict[i] and val1:
+                b1 = newAtt1
                 val1 = False
                 tab1 = i
-            if newAtt2 in self.tableDict[i]:
-                a2 = newAtt2
+            elif newAtt1 in self.tableDict[i]:
+                self.prError('Ambiguous Column name ' + str(a1))
+            if newAtt2 in self.tableDict[i] and val2:
+                b2 = newAtt2
                 val2 = False
                 tab2 = i
+            elif newAtt2 in self.tableDict[i]:
+                self.prError('Ambiguous Column name ' + str(a1))
+        a1 = deepcopy(b1)
+        a2 = deepcopy(b2)
         lst = []
         for i in self.finalTable:
             x1 = 0
@@ -249,7 +258,8 @@ class Query():
                 x2 = i[idx]
             if self.applyOp(x1, op, x2):
                 lst.append(i)
-        if (tab1 != tab2) and (op == '=') and tab1 != '' and tab2 != '' and len(self.attributes) == len(self.allAttributes):
+        if (tab1 != tab2) and (op == '=') and tab1 != '' and tab2 != '' and\
+                len(self.attributes) == len(self.allAttributes):
             idx = self.allAttributes.index(a2)
             self.flagAttributes[idx] = False
             try:
@@ -262,7 +272,7 @@ class Query():
         idx = self.tokenNames.index('Where')
         whr = self.query[idx].tokens
         if len(whr) < 3:
-            self.prError("Invalid Query Syntax !!")
+            self.prError("No condition after where !")
         self.cond = True
         self.joinOp = 'and'
         for i in range(2, len(whr), 2):
@@ -275,12 +285,12 @@ class Query():
                         flag = False
                         lst = str(whr[i]).split(op)
                         if len(lst) != 2:
-                            self.prError("Invalid Syntax !!")
+                            self.prError("Invalid Condition!")
                         comp.append(lst[0].strip())
                         comp.append(op)
                         comp.append(lst[1].strip())
                 if flag:
-                    self.prError("Operator not found!!")
+                    self.prError("Operator not found!")
                 table2 = self.getTabCond(comp[0], comp[1], comp[2])
                 table1 = deepcopy(self.finalTable)
                 if self.joinOp == 'or':
@@ -291,14 +301,17 @@ class Query():
                 self.cond = True
                 self.joinOp = str(whr[i]).lower()
             else:
-                self.prError("Invalid Query Syntax !!")
+                self.prError("Only AND & OR conditions are allowed !")
         if self.cond == True:
-            self.prError("Invalid Query Syntax !!")
+            self.prError("No condition given at the end of the query!")
 
     def processQuery(self):
-        if self.qType != 'SELECT' or len(self.identifiers) < 4 or len(self.identifiers) > 6:
-            self.prError("INVALID QUERY !!")
-
+        if self.qType != 'SELECT':
+            self.prError("Only Select Queries are allowed.")
+        if len(self.identifiers) < 4 or len(self.identifiers) > 6:
+            self.prError("INVALID QUERY !")
+        if self.identifiers[-1][-1] != ';':
+            self.prError("No semicolon present")
         self.where = True if 'where' in self.identifiers[-1] else False
         self.distinct = True if self.identifiers[1] == 'distinct' else False
         posT = 4 if self.distinct else 3
@@ -306,7 +319,7 @@ class Query():
         posA = 2 if self.distinct else 1
 
         if self.identifiers[posF] != 'from':
-            self.prError("INVALID QUERY SYNTAX !")
+            self.prError("Invalid Query!")
 
         self.getTableNames(posT)
         self.getTables()
@@ -330,4 +343,4 @@ class Query():
 if len(sys.argv) > 1:
     Query(sys.argv[1:])
 else:
-    print("INVALID QUERY !!")
+    print("NO QUERY GIVEN !")
